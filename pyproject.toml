@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "warp-lang>=1.5",
     "numpy>=1.26",
+    "matplotlib>=3.10.9",
 ]
 
 [project.optional-dependencies]
