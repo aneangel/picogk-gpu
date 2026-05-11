@@ -1,0 +1,86 @@
+{
+  "name": "rover_wheel",
+  "voxel_size": 0.1,
+  "args": [],
+  "runs": [
+    {
+      "wall_seconds": 269.71,
+      "max_rss_kb": 116186696,
+      "user_seconds": 1412.12,
+      "system_seconds": 241.92,
+      "cpu_percent": 613,
+      "page_faults_major": 5004,
+      "page_faults_minor": 57511815,
+      "context_switches_vol": 2941553,
+      "context_switches_invol": 426903,
+      "exit_status": 0,
+      "exit_code": 0,
+      "stdout_tail": ".0+ ----------------------------------------\n      0s    0.0+ \n      0s    0.0+ Current time (UTC): 2026-05-11 02:16:53 (UTC)\n      0s    0.0+ Current local time: 2026-05-10 19:16:53 (-07:00)\n      0s    0.0+ \n      0s    0.0+ ----------------------------------------\n      0s    0.0+ \n      0s    0.0+ System Info:\n      0s    0.0+ \n      0s    0.0+ Machine Name:         aneangel-linux\n      0s    0.0+ Operating System      Ubuntu 24.04.4 LTS\n      0s    0.0+ Version:              Unix 6.17.0.23\n      0s    0.0+ OS Architecture:      X64\n      0s    0.0+ Proc Architecture:    X64\n      0s    0.0+ 64 Bit OS:            Yes\n      0s    0.0+ 64 Bit Process:       Yes\n      0s    0.0+ Processor Count:      16\n      0s    0.0+ Working Set:          37MB\n      0s    0.0+ C# Framework:         .NET 9.0.15\n      0s    0.0+ C# CLR Version:       9.0.15\n      0s    0.0+ PicoGK Path:          picogk.1.7\n      0s    0.0+ Command Line:         /home/aneangel/picogk-gpu/benchmarks/rover_wheel/Host/bin/Release/net9.0/Host.dll\n      0s    0.0+ \n      0s    0.0+ ----------------------------------------\n      0s    0.0+ \n      0s    0.0+ Welcome to PicoGK\n      0s    0.0+ Creating Viewer\n      0s    0.2+ PicoGK:    PicoGK Core Library\n      0s    0.0+            1.7.1\n      0s    0.0+            2024-08-03 18:24:24 picogk\n      0s    0.0+ \n      0s    0.0+ VoxelSize: 0.1 (mm)\n      0s    0.0+ Happy Computational Engineering!\n      0s    0.0+ \n      0s    0.0+ \n      0s    0.0+ Loading lights embedded environment\n      0s    0.0+ Starting tasks.\n      0s    0.0+ \n      0s    0.0+ Loading Lights\n    263s  263.2+ STL Export: /home/aneangel/Documents/RoverWheel.STL exported.\n    263s    0.0+ Viewer Window Closed\n    265s    1.2+ \n    265s    1.2+ ----------------------------------------\n    265s    1.2+ \n    265s    0.0+ Closing log file.\n    265s    0.0+ Current time (UTC): 2026-05-11 02:21:18 (UTC)\n    265s    0.0+ Current local time: 2026-05-10 19:21:18 (-07:00)\n    265s    0.0+ Done.\n",
+      "stderr_tail": "\tCommand being timed: \"dotnet run -c Release --no-build --project /home/aneangel/picogk-gpu/benchmarks/rover_wheel/Host --\"\n\tUser time (seconds): 1412.12\n\tSystem time (seconds): 241.92\n\tPercent of CPU this job got: 613%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 4:29.71\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 116186696\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 5004\n\tMinor (reclaiming a frame) page faults: 57511815\n\tVoluntary context switches: 2941553\n\tInvoluntary context switches: 426903\n\tSwaps: 0\n\tFile system inputs: 91184\n\tFile system outputs: 33856472\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n",
+      "run_idx": 0,
+      "python_wall_seconds": 269.7401120662689
+    }
+  ],
+  "aggregate": {
+    "wall_seconds": {
+      "median": 269.71,
+      "min": 269.71,
+      "max": 269.71,
+      "stddev": 0.0,
+      "n": 1
+    },
+    "max_rss_kb": {
+      "median": 116186696,
+      "min": 116186696,
+      "max": 116186696,
+      "stddev": 0.0,
+      "n": 1
+    },
+    "user_seconds": {
+      "median": 1412.12,
+      "min": 1412.12,
+      "max": 1412.12,
+      "stddev": 0.0,
+      "n": 1
+    },
+    "system_seconds": {
+      "median": 241.92,
+      "min": 241.92,
+      "max": 241.92,
+      "stddev": 0.0,
+      "n": 1
+    },
+    "cpu_percent": {
+      "median": 613,
+      "min": 613,
+      "max": 613,
+      "stddev": 0.0,
+      "n": 1
+    }
+  },
+  "env": {
+    "platform": "Linux-6.17.0-23-generic-x86_64-with-glibc2.39",
+    "python": "3.12.13",
+    "cpu": {
+      "model": "AMD Ryzen 7 7800X3D 8-Core Processor",
+      "logical_cores": "16"
+    },
+    "memory": {
+      "total_kb": 131091692
+    },
+    "gpu": [
+      {
+        "name": "NVIDIA GeForce RTX 5090",
+        "driver": "580.126.09",
+        "memory_mib": 32607,
+        "compute_cap": "12.0"
+      }
+    ],
+    "tools": {
+      "dotnet": "9.0.313",
+      "cmake": "cmake version 3.28.3",
+      "git": "git version 2.43.0"
+    }
+  },
+  "timestamp": "2026-05-10T19:21:22"
+}

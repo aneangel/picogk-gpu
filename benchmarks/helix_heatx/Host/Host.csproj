@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>PicoGKGpu.Bench.HelixHeatX</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Configuration Condition=" '$(Configuration)' == '' ">Release</Configuration>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\third_party\PicoGK\PicoGK.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <Content Include="..\..\..\third_party\PicoGK\native\linux-x64\libpicogk.1.7.so">
+      <Link>libpicogk.1.7.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\third_party\LEAP71_ShapeKernel\ShapeKernel\**\*.cs" />
+    <Compile Include="..\upstream\src\**\*.cs" />
+  </ItemGroup>
+
+</Project>

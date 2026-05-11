@@ -1,0 +1,86 @@
+{
+  "name": "helix_heatx",
+  "voxel_size": 0.15,
+  "args": [],
+  "runs": [
+    {
+      "wall_seconds": 1691.39,
+      "max_rss_kb": 42287732,
+      "user_seconds": 14143.04,
+      "system_seconds": 137.52,
+      "cpu_percent": 844,
+      "page_faults_major": 0,
+      "page_faults_minor": 18223399,
+      "context_switches_vol": 6537943,
+      "context_switches_invol": 1191764,
+      "exit_status": 0,
+      "exit_code": 0,
+      "stdout_tail": "+ Current time (UTC): 2026-05-11 00:17:42 (UTC)\n      0s    0.0+ Current local time: 2026-05-10 17:17:42 (-07:00)\n      0s    0.0+ \n      0s    0.0+ ----------------------------------------\n      0s    0.0+ \n      0s    0.0+ System Info:\n      0s    0.0+ \n      0s    0.0+ Machine Name:         aneangel-linux\n      0s    0.0+ Operating System      Ubuntu 24.04.4 LTS\n      0s    0.0+ Version:              Unix 6.17.0.23\n      0s    0.0+ OS Architecture:      X64\n      0s    0.0+ Proc Architecture:    X64\n      0s    0.0+ 64 Bit OS:            Yes\n      0s    0.0+ 64 Bit Process:       Yes\n      0s    0.0+ Processor Count:      16\n      0s    0.0+ Working Set:          37MB\n      0s    0.0+ C# Framework:         .NET 9.0.15\n      0s    0.0+ C# CLR Version:       9.0.15\n      0s    0.0+ PicoGK Path:          picogk.1.7\n      0s    0.0+ Command Line:         /home/aneangel/picogk-gpu/benchmarks/helix_heatx/Host/bin/Release/net9.0/Host.dll\n      0s    0.0+ \n      0s    0.0+ ----------------------------------------\n      0s    0.0+ \n      0s    0.0+ Welcome to PicoGK\n      0s    0.0+ Creating Viewer\n      0s    0.1+ PicoGK:    PicoGK Core Library\n      0s    0.0+            1.7.1\n      0s    0.0+            2024-08-03 18:24:24 picogk\n      0s    0.0+ \n      0s    0.0+ VoxelSize: 0.15 (mm)\n      0s    0.0+ Happy Computational Engineering!\n      0s    0.0+ \n      0s    0.0+ \n      0s    0.0+ Loading lights embedded environment\n      0s    0.0+ Starting tasks.\n      0s    0.0+ \n      0s    0.0+ Starting Task.\n      0s    0.0+ Loading Lights\n   1689s 1688.6+ STL Export: /home/aneangel/Documents/HelixHeatX.STL exported.\n   1689s    0.0+ Finished Task successfully.\n   1689s    0.0+ Viewer Window Closed\n   1689s    0.6+ \n   1689s    0.6+ ----------------------------------------\n   1689s    0.6+ \n   1689s    0.0+ Closing log file.\n   1689s    0.0+ Current time (UTC): 2026-05-11 00:45:52 (UTC)\n   1689s    0.0+ Current local time: 2026-05-10 17:45:52 (-07:00)\n   1689s    0.0+ Done.\n",
+      "stderr_tail": "\tCommand being timed: \"dotnet run -c Release --no-build --project /home/aneangel/picogk-gpu/benchmarks/helix_heatx/Host --\"\n\tUser time (seconds): 14143.04\n\tSystem time (seconds): 137.52\n\tPercent of CPU this job got: 844%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 28:11.39\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 42287732\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 18223399\n\tVoluntary context switches: 6537943\n\tInvoluntary context switches: 1191764\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 12045936\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n",
+      "run_idx": 0,
+      "python_wall_seconds": 1691.3941304683685
+    }
+  ],
+  "aggregate": {
+    "wall_seconds": {
+      "median": 1691.39,
+      "min": 1691.39,
+      "max": 1691.39,
+      "stddev": 0.0,
+      "n": 1
+    },
+    "max_rss_kb": {
+      "median": 42287732,
+      "min": 42287732,
+      "max": 42287732,
+      "stddev": 0.0,
+      "n": 1
+    },
+    "user_seconds": {
+      "median": 14143.04,
+      "min": 14143.04,
+      "max": 14143.04,
+      "stddev": 0.0,
+      "n": 1
+    },
+    "system_seconds": {
+      "median": 137.52,
+      "min": 137.52,
+      "max": 137.52,
+      "stddev": 0.0,
+      "n": 1
+    },
+    "cpu_percent": {
+      "median": 844,
+      "min": 844,
+      "max": 844,
+      "stddev": 0.0,
+      "n": 1
+    }
+  },
+  "env": {
+    "platform": "Linux-6.17.0-23-generic-x86_64-with-glibc2.39",
+    "python": "3.12.13",
+    "cpu": {
+      "model": "AMD Ryzen 7 7800X3D 8-Core Processor",
+      "logical_cores": "16"
+    },
+    "memory": {
+      "total_kb": 131091692
+    },
+    "gpu": [
+      {
+        "name": "NVIDIA GeForce RTX 5090",
+        "driver": "580.126.09",
+        "memory_mib": 32607,
+        "compute_cap": "12.0"
+      }
+    ],
+    "tools": {
+      "dotnet": "9.0.313",
+      "cmake": "cmake version 3.28.3",
+      "git": "git version 2.43.0"
+    }
+  },
+  "timestamp": "2026-05-10T17:45:54"
+}

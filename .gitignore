@@ -1,0 +1,31 @@
+# upstream clones — re-fetched by scripts/setup.sh, not vendored
+third_party/
+benchmarks/*/upstream/
+
+# build outputs
+build/
+out/
+bin/
+obj/
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.pdb
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.uv/
+
+# misc benchmark output (CSVs are tooling-generated; JSONs are the scoreboard and ARE committed)
+benchmarks/results/*.csv
+
+# editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
