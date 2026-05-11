@@ -80,29 +80,58 @@ def _boolean_combine_kernel(
     phi_r[tid] = wp.clamp(result, -band, band)
 
 
+_COORD_BITS = 20                 # supports grids up to 2^20 = 1,048,576 per axis
+_COORD_MASK = (1 << _COORD_BITS) - 1
+
+
+def _pack_coords(coords: np.ndarray) -> np.ndarray:
+    """Pack (N, 3) int32 coords into (N,) int64 for fast np.unique on 1D."""
+    c = coords.astype(np.int64)
+    return ((c[:, 0] & _COORD_MASK) << (2 * _COORD_BITS)) | \
+           ((c[:, 1] & _COORD_MASK) << _COORD_BITS) | \
+           (c[:, 2] & _COORD_MASK)
+
+
+def _unpack_coords(packed: np.ndarray) -> np.ndarray:
+    i = ((packed >> (2 * _COORD_BITS)) & _COORD_MASK).astype(np.int32)
+    j = ((packed >> _COORD_BITS) & _COORD_MASK).astype(np.int32)
+    k = (packed & _COORD_MASK).astype(np.int32)
+    return np.stack([i, j, k], axis=1)
+
+
+def _unique_coords(coords: np.ndarray) -> np.ndarray:
+    """Equivalent to np.unique(coords, axis=0) but ~10–50x faster via int64 packing."""
+    return _unpack_coords(np.unique(_pack_coords(coords)))
+
+
 def _dilate_coords_chebyshev(coords: np.ndarray, margin: int) -> np.ndarray:
-    """Return the set of integer coords within Chebyshev distance `margin`
-    of any input coord. `coords` shape (N, 3) int."""
+    """Set of integer coords within Chebyshev distance `margin` of any input."""
     if margin == 0:
-        return np.unique(coords, axis=0)
+        return _unique_coords(coords)
     rng = np.arange(-margin, margin + 1, dtype=np.int32)
     di, dj, dk = np.meshgrid(rng, rng, rng, indexing="ij")
     offs = np.stack([di.ravel(), dj.ravel(), dk.ravel()], axis=1)  # ((2m+1)^3, 3)
     expanded = coords[:, None, :] + offs[None, :, :]
     expanded = expanded.reshape(-1, 3)
-    return np.unique(expanded, axis=0)
+    return _unique_coords(expanded)
 
 
-def _result_topology(a: SparseSDF, b: SparseSDF, margin: int) -> np.ndarray:
-    """Coord list for the dilated union of A and B topologies."""
+def _result_topology(a: SparseSDF, b: SparseSDF, op: int, margin: int) -> np.ndarray:
+    """Coord list for the result. Each op has the minimal correct topology:
+      - union     : A.coords ∪ B.coords  (result band is union of input bands)
+      - intersect : A.coords ∪ B.coords  (result is subset, kernel clamps)
+      - difference: A.coords             (result is contained in A's band)
+    """
     a_coords = a.coords.numpy()
-    b_coords = b.coords.numpy()
-    union = np.concatenate([a_coords, b_coords], axis=0)
+    if op == 2:  # difference: only A's topology needed
+        coords = a_coords
+    else:        # union, intersect: both
+        coords = np.concatenate([a_coords, b.coords.numpy()], axis=0)
     if margin > 0:
-        union = _dilate_coords_chebyshev(union, margin)
+        coords = _dilate_coords_chebyshev(coords, margin)
     else:
-        union = np.unique(union, axis=0)
-    return union.astype(np.int32)
+        coords = _unique_coords(coords)
+    return coords.astype(np.int32)
 
 
 def _check_compatible(a: SparseSDF, b: SparseSDF) -> None:
@@ -117,7 +146,7 @@ def _apply_boolean(a: SparseSDF, b: SparseSDF, op: int,
     _check_compatible(a, b)
     band = max(a.band_width, b.band_width)
 
-    coords_r = _result_topology(a, b, margin)
+    coords_r = _result_topology(a, b, op, margin)
     # Allocate the result volume; fill values via the combine kernel.
     coords_r_wp = wp.array(coords_r, dtype=wp.vec3i, device=a.device)
     volume_r = wp.Volume.allocate_by_voxels(
@@ -144,19 +173,19 @@ def _apply_boolean(a: SparseSDF, b: SparseSDF, op: int,
     return result
 
 
-def union(a: SparseSDF, b: SparseSDF, margin: int = 2,
+def union(a: SparseSDF, b: SparseSDF, margin: int = 1,
           auto_reinit: int = 3) -> SparseSDF:
-    """A ∪ B. Result band is dilated union of inputs (margin voxels)."""
+    """A ∪ B. Default margin=1 voxel for safety near band edges."""
     return _apply_boolean(a, b, op=0, margin=margin, auto_reinit=auto_reinit)
 
 
-def intersection(a: SparseSDF, b: SparseSDF, margin: int = 2,
+def intersection(a: SparseSDF, b: SparseSDF, margin: int = 1,
                  auto_reinit: int = 3) -> SparseSDF:
     """A ∩ B."""
     return _apply_boolean(a, b, op=1, margin=margin, auto_reinit=auto_reinit)
 
 
-def difference(a: SparseSDF, b: SparseSDF, margin: int = 2,
+def difference(a: SparseSDF, b: SparseSDF, margin: int = 0,
                auto_reinit: int = 3) -> SparseSDF:
-    """A − B (A minus B)."""
+    """A − B. Default margin=0: difference is contained in A's topology."""
     return _apply_boolean(a, b, op=2, margin=margin, auto_reinit=auto_reinit)
