@@ -19,7 +19,7 @@ import numpy as np
 import warp as wp
 
 sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
-from picogkgpu.reinit import reinit_numpy, reinit_warp  # noqa: E402
+from picogkgpu.reinit import Reinit, reinit_numpy, reinit_warp  # noqa: E402
 
 
 def _sphere_sdf(n: int, dx: float, radius: float) -> np.ndarray:
@@ -61,13 +61,22 @@ def bench(sizes_numpy: list[int], sizes_warp: list[int], steps: int = 5, repeats
     for n in sizes_warp:
         dx = 1.0 / (n - 1)
         phi0 = _sphere_sdf(n, dx, radius=0.4)
-        # warm up (JIT compile, allocate)
-        reinit_warp(phi0, dx=dx, num_steps=1, device=device)
-        t = _time(lambda: reinit_warp(phi0, dx=dx, num_steps=steps, device=device), repeats=repeats)
         cells = n ** 3
-        mcus = (cells * steps) / t / 1e6
-        out["results"].append({"impl": f"warp:{device}", "n": n, "wall_s": t, "mcus": mcus, "cells": cells})
-        print(f"{'warp/' + device:<10}{n:>6}{steps:>7}{t:>10.3f}{mcus:>12.2f}{cells:>14,}")
+
+        # variant A: one-shot helper, re-allocates and re-captures every call
+        reinit_warp(phi0, dx=dx, num_steps=1, device=device)
+        t_loop = _time(lambda: reinit_warp(phi0, dx=dx, num_steps=steps, device=device), repeats=repeats)
+        mcus_loop = (cells * steps) / t_loop / 1e6
+        out["results"].append({"impl": f"warp-oneshot:{device}", "n": n, "wall_s": t_loop, "mcus": mcus_loop, "cells": cells})
+        print(f"{'warp/1shot':<10}{n:>6}{steps:>7}{t_loop:>10.3f}{mcus_loop:>12.2f}{cells:>14,}")
+
+        # variant B: Reinit class — allocates and captures once, reuses graph
+        op = Reinit((n, n, n), dx=dx, device=device)
+        op.run(phi0, num_steps=steps)  # warm: triggers graph build
+        t_graph = _time(lambda: op.run(phi0, num_steps=steps), repeats=repeats)
+        mcus_graph = (cells * steps) / t_graph / 1e6
+        out["results"].append({"impl": f"warp-graph:{device}", "n": n, "wall_s": t_graph, "mcus": mcus_graph, "cells": cells})
+        print(f"{'warp/graph':<10}{n:>6}{steps:>7}{t_graph:>10.3f}{mcus_graph:>12.2f}{cells:>14,}")
 
     return out
 

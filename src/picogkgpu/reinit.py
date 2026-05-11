@@ -201,23 +201,87 @@ def hj_weno5_reinit_step(
     phi_out[i, j, k] = phi_in[i, j, k] - dt * sign * (grad_mag - 1.0)
 
 
-def reinit_warp(phi0_np: np.ndarray, dx: float, num_steps: int,
-                dt: float | None = None, device: str = "cuda") -> np.ndarray:
-    """Run `num_steps` of HJ-WENO5 reinit on Warp. Returns numpy array."""
-    if dt is None:
-        dt = 0.5 * dx
-    arr0 = wp.array(phi0_np.astype(np.float32, copy=False), dtype=float, device=device)
-    a = wp.array(phi0_np.astype(np.float32, copy=False), dtype=float, device=device)
-    b = wp.empty_like(a)
+class Reinit:
+    """Reusable reinit op that allocates GPU buffers once and (on CUDA devices)
+    captures the multi-step launch sequence as a CUDA graph to amortize the
+    ~30 us per-launch overhead. Cached by step count.
 
-    for _ in range(num_steps):
+    Use this class for hot loops; use `reinit_warp` for one-shot convenience.
+    """
+
+    def __init__(self, shape: tuple[int, int, int], dx: float,
+                 dt: float | None = None, device: str = "cuda") -> None:
+        self.shape = shape
+        self.dx = float(dx)
+        self.dt = float(dt) if dt is not None else 0.5 * self.dx
+        self.device = device
+        self.a = wp.empty(shape, dtype=float, device=device)
+        self.b = wp.empty(shape, dtype=float, device=device)
+        self.arr0 = wp.empty(shape, dtype=float, device=device)
+        self._graphs: dict[int, object | None] = {}
+
+        # warm up JIT compile so capture doesn't include compile time
         wp.launch(
-            hj_weno5_reinit_step,
-            dim=a.shape,
-            inputs=[a, arr0, b, float(dx), float(dt)],
+            hj_weno5_reinit_step, dim=shape,
+            inputs=[self.a, self.arr0, self.b, self.dx, self.dt],
             device=device,
         )
-        a, b = b, a
+        wp.synchronize()
 
-    wp.synchronize()
-    return a.numpy()
+    def _build_graph(self, num_steps: int) -> None:
+        if not wp.get_device(self.device).is_cuda:
+            self._graphs[num_steps] = None
+            return
+        with wp.ScopedCapture(device=self.device) as cap:
+            a, b = self.a, self.b
+            for _ in range(num_steps):
+                wp.launch(
+                    hj_weno5_reinit_step, dim=a.shape,
+                    inputs=[a, self.arr0, b, self.dx, self.dt],
+                    device=self.device,
+                )
+                a, b = b, a
+        self._graphs[num_steps] = cap.graph
+        # remember the buffer that will hold the final result after replay:
+        # even N -> self.a, odd N -> self.b (see capture-time swap ordering)
+
+    def run(self, phi0_np: np.ndarray, num_steps: int) -> np.ndarray:
+        if num_steps < 0:
+            raise ValueError("num_steps must be >= 0")
+        src = phi0_np.astype(np.float32, copy=False)
+        self.arr0.assign(src)
+        self.a.assign(src)
+
+        if num_steps == 0:
+            wp.synchronize()
+            return self.a.numpy()
+
+        if num_steps not in self._graphs:
+            self._build_graph(num_steps)
+
+        graph = self._graphs[num_steps]
+        if graph is not None:
+            wp.capture_launch(graph)
+        else:
+            # CPU fallback: launches without graph
+            a, b = self.a, self.b
+            for _ in range(num_steps):
+                wp.launch(
+                    hj_weno5_reinit_step, dim=a.shape,
+                    inputs=[a, self.arr0, b, self.dx, self.dt],
+                    device=self.device,
+                )
+                a, b = b, a
+            self.a, self.b = a, b
+
+        wp.synchronize()
+        result_buf = self.a if num_steps % 2 == 0 else self.b
+        return result_buf.numpy()
+
+
+def reinit_warp(phi0_np: np.ndarray, dx: float, num_steps: int,
+                dt: float | None = None, device: str = "cuda") -> np.ndarray:
+    """One-shot HJ-WENO5 reinit. Allocates and (on CUDA) captures a graph each
+    call — prefer `Reinit` for repeated use at the same shape."""
+    op = Reinit(phi0_np.shape, dx=dx, dt=dt, device=device)
+    return op.run(phi0_np, num_steps=num_steps)

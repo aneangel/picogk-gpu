@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 import warp as wp
 
-from picogkgpu.reinit import reinit_numpy, reinit_warp
+from picogkgpu.reinit import Reinit, reinit_numpy, reinit_warp
 
 
 def _sphere_sdf(n: int, dx: float, radius: float, perturb_scale: float = 0.0,
@@ -71,3 +71,34 @@ def test_clean_sphere_is_fixed_point(warp_device):
     interior = (slice(3, -3),) * 3
     delta = np.abs(out[interior] - phi0[interior]).max()
     assert delta < 5e-3, f"clean sphere drifted by {delta} after 3 reinit steps"
+
+
+def test_reinit_class_matches_one_shot(warp_device):
+    """The captured-graph `Reinit` class must produce identical output to the
+    one-shot `reinit_warp` helper across step counts (even AND odd, since the
+    result lives in different buffers depending on parity)."""
+    n, dx = 48, 1.0 / 24.0
+    phi0 = _sphere_sdf(n, dx, radius=0.4, perturb_scale=0.15, seed=7)
+    op = Reinit(phi0.shape, dx=dx, device=warp_device)
+
+    for num_steps in (1, 2, 5):
+        ref = reinit_warp(phi0, dx=dx, num_steps=num_steps, device=warp_device)
+        got = op.run(phi0, num_steps=num_steps)
+        np.testing.assert_allclose(got, ref, atol=1e-6, rtol=1e-6,
+                                   err_msg=f"mismatch at num_steps={num_steps}")
+
+
+def test_reinit_class_reuse(warp_device):
+    """The class should be safely reusable across different inputs."""
+    n, dx = 48, 1.0 / 24.0
+    phi_a = _sphere_sdf(n, dx, radius=0.40, perturb_scale=0.10, seed=1)
+    phi_b = _sphere_sdf(n, dx, radius=0.35, perturb_scale=0.20, seed=2)
+    op = Reinit(phi_a.shape, dx=dx, device=warp_device)
+
+    out_a = op.run(phi_a, num_steps=3)
+    out_b = op.run(phi_b, num_steps=3)
+    ref_a = reinit_warp(phi_a, dx=dx, num_steps=3, device=warp_device)
+    ref_b = reinit_warp(phi_b, dx=dx, num_steps=3, device=warp_device)
+
+    np.testing.assert_allclose(out_a, ref_a, atol=1e-6, rtol=1e-6)
+    np.testing.assert_allclose(out_b, ref_b, atol=1e-6, rtol=1e-6)
