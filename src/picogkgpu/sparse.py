@@ -21,6 +21,9 @@ import warp as wp
 from picogkgpu.sparse_reinit import hj_weno5_reinit_step_sparse, BG_DETECT
 
 
+BG_LEAF_SIZE = 8  # background-sign field is one entry per 8x8x8 dense block
+
+
 class SparseSDF:
     def __init__(
         self,
@@ -30,6 +33,9 @@ class SparseSDF:
         dx: float,
         band_width: float,
         device: str,
+        bg_sign: wp.array | None = None,
+        bg_origin: tuple[int, int, int] = (0, 0, 0),
+        bg_leaf_size: int = BG_LEAF_SIZE,
     ) -> None:
         self.volume = volume
         self.coords = coords       # wp.array (N, 3) int32
@@ -37,6 +43,15 @@ class SparseSDF:
         self.dx = float(dx)
         self.band_width = float(band_width)
         self.device = device
+        # Background sign: coarse 3D int8 array, one entry per `bg_leaf_size`^3
+        # block of the dense grid. Values: -1 = block is entirely inside the
+        # solid, +1 = entirely outside, 0 = boundary (block straddles the
+        # surface and may contain band cells).
+        # `bg_origin` is the (i,j,k) offset of bg_sign[0,0,0] in dense-coord
+        # space, allowing the sign field to cover a sub-region of the world.
+        self.bg_sign = bg_sign
+        self.bg_origin = tuple(int(v) for v in bg_origin)
+        self.bg_leaf_size = int(bg_leaf_size)
 
     @property
     def n_active(self) -> int:
@@ -46,7 +61,7 @@ class SparseSDF:
 
     @classmethod
     def from_dense(cls, phi_dense: np.ndarray, dx: float, band_width: float,
-                   device: str = "cuda") -> "SparseSDF":
+                   device: str = "cuda", bg_leaf_size: int = BG_LEAF_SIZE) -> "SparseSDF":
         if phi_dense.ndim != 3:
             raise ValueError("phi_dense must be a 3D array")
         mask = np.abs(phi_dense) < band_width
@@ -63,7 +78,12 @@ class SparseSDF:
         out_of_band = np.abs(vals) >= band_width
         vals = np.where(out_of_band, np.sign(vals).astype(np.float32) * band_width, vals)
         values = wp.array(vals.astype(np.float32), dtype=float, device=device)
-        return cls(volume, coords, values, dx, band_width, device)
+
+        bg_sign_np = compute_bg_sign(phi_dense, leaf_size=bg_leaf_size).astype(np.int32)
+        bg_sign = wp.array(bg_sign_np, dtype=wp.int32, device=device)
+        return cls(volume, coords, values, dx, band_width, device,
+                   bg_sign=bg_sign, bg_origin=(0, 0, 0),
+                   bg_leaf_size=bg_leaf_size)
 
     @classmethod
     def from_topology(cls, coords_np: np.ndarray, values_np: np.ndarray,
@@ -120,7 +140,9 @@ class SparseSDF:
         new_values = wp.empty_like(self.values)
         wp.copy(new_values, self.values)
         return SparseSDF(self.volume, self.coords, new_values,
-                         self.dx, self.band_width, self.device)
+                         self.dx, self.band_width, self.device,
+                         bg_sign=self.bg_sign, bg_origin=self.bg_origin,
+                         bg_leaf_size=self.bg_leaf_size)
 
     def reinit(self, num_steps: int, dt: float | None = None) -> "SparseSDF":
         """N steps of HJ-WENO5 re-distancing. Returns a new SparseSDF."""
@@ -144,4 +166,41 @@ class SparseSDF:
             a, b = b, a
         wp.synchronize()
         return SparseSDF(self.volume, self.coords, a,
-                         self.dx, self.band_width, self.device)
+                         self.dx, self.band_width, self.device,
+                         bg_sign=self.bg_sign, bg_origin=self.bg_origin,
+                         bg_leaf_size=self.bg_leaf_size)
+
+
+def compute_bg_sign(phi_dense: np.ndarray, leaf_size: int = BG_LEAF_SIZE,
+                    tol: float = 1e-6) -> np.ndarray:
+    """One int8 per leaf_size^3 block: -1 (all inside), +1 (all outside), 0 (boundary).
+
+    Used by boolean kernels to assign a correct sign to cells that are outside
+    a SparseSDF's narrow band — the band-extrapolation fallback `+band_width`
+    alone is wrong for cells deep inside thick interiors.
+
+    Implementation: for each leaf-sized block, check the min and max of phi.
+    If both negative (with a small tolerance), the block is interior; both
+    positive, exterior; otherwise the block straddles the zero contour and
+    we return 0 — meaning "use the band-edge fallback at this resolution."
+    """
+    n0, n1, n2 = phi_dense.shape
+    nl0 = (n0 + leaf_size - 1) // leaf_size
+    nl1 = (n1 + leaf_size - 1) // leaf_size
+    nl2 = (n2 + leaf_size - 1) // leaf_size
+    bg = np.zeros((nl0, nl1, nl2), dtype=np.int8)
+    for li in range(nl0):
+        i0, i1 = li * leaf_size, min((li + 1) * leaf_size, n0)
+        for lj in range(nl1):
+            j0, j1 = lj * leaf_size, min((lj + 1) * leaf_size, n1)
+            for lk in range(nl2):
+                k0, k1 = lk * leaf_size, min((lk + 1) * leaf_size, n2)
+                block = phi_dense[i0:i1, j0:j1, k0:k1]
+                lo = block.min()
+                hi = block.max()
+                if hi < -tol:
+                    bg[li, lj, lk] = -1
+                elif lo > tol:
+                    bg[li, lj, lk] = +1
+                # else: boundary, stays 0
+    return bg

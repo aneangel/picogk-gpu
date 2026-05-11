@@ -42,10 +42,45 @@ OP_INTERSECT = wp.constant(1)
 OP_DIFFERENCE = wp.constant(2)
 
 
+@wp.func
+def _read_with_sign(
+    grid: wp.uint64,
+    bg_sign: wp.array3d(dtype=wp.int32),
+    bg_origin_i: int, bg_origin_j: int, bg_origin_k: int,
+    bg_leaf_size: int,
+    bg_dim_i: int, bg_dim_j: int, bg_dim_k: int,
+    phi: wp.array1d(dtype=float),
+    i: int, j: int, k: int,
+    band: float,
+) -> float:
+    """Read phi at coord. If in band: return value. If out-of-band: consult
+    background-sign field for the correct ±band fallback."""
+    idx = wp.volume_lookup_index(grid, i, j, k)
+    if idx >= 0:
+        return phi[idx]
+    # outside the band — look up coarse leaf sign
+    li = (i - bg_origin_i) // bg_leaf_size
+    lj = (j - bg_origin_j) // bg_leaf_size
+    lk = (k - bg_origin_k) // bg_leaf_size
+    if li < 0 or lj < 0 or lk < 0 or li >= bg_dim_i or lj >= bg_dim_j or lk >= bg_dim_k:
+        return band  # outside the bg field's coverage — assume "outside solid"
+    s = bg_sign[li, lj, lk]
+    if s < 0:
+        return -band
+    return band
+
+
 @wp.kernel
 def _boolean_combine_kernel(
     grid_a: wp.uint64,
     grid_b: wp.uint64,
+    bg_sign_a: wp.array3d(dtype=wp.int32),
+    bg_origin_a_i: int, bg_origin_a_j: int, bg_origin_a_k: int,
+    bg_dim_a_i: int, bg_dim_a_j: int, bg_dim_a_k: int,
+    bg_sign_b: wp.array3d(dtype=wp.int32),
+    bg_origin_b_i: int, bg_origin_b_j: int, bg_origin_b_k: int,
+    bg_dim_b_i: int, bg_dim_b_j: int, bg_dim_b_k: int,
+    bg_leaf_size: int,
     coords_r: wp.array2d(dtype=int),
     phi_a: wp.array1d(dtype=float),
     phi_b: wp.array1d(dtype=float),
@@ -58,17 +93,14 @@ def _boolean_combine_kernel(
     j = coords_r[tid, 1]
     k = coords_r[tid, 2]
 
-    idx_a = wp.volume_lookup_index(grid_a, i, j, k)
-    if idx_a >= 0:
-        va = phi_a[idx_a]
-    else:
-        va = band
-
-    idx_b = wp.volume_lookup_index(grid_b, i, j, k)
-    if idx_b >= 0:
-        vb = phi_b[idx_b]
-    else:
-        vb = band
+    va = _read_with_sign(grid_a, bg_sign_a,
+                          bg_origin_a_i, bg_origin_a_j, bg_origin_a_k, bg_leaf_size,
+                          bg_dim_a_i, bg_dim_a_j, bg_dim_a_k,
+                          phi_a, i, j, k, band)
+    vb = _read_with_sign(grid_b, bg_sign_b,
+                          bg_origin_b_i, bg_origin_b_j, bg_origin_b_k, bg_leaf_size,
+                          bg_dim_b_i, bg_dim_b_j, bg_dim_b_k,
+                          phi_b, i, j, k, band)
 
     if op == 0:
         result = wp.min(va, vb)
@@ -117,16 +149,17 @@ def _dilate_coords_chebyshev(coords: np.ndarray, margin: int) -> np.ndarray:
 
 
 def _result_topology(a: SparseSDF, b: SparseSDF, op: int, margin: int) -> np.ndarray:
-    """Coord list for the result. Each op has the minimal correct topology:
-      - union     : A.coords ∪ B.coords  (result band is union of input bands)
-      - intersect : A.coords ∪ B.coords  (result is subset, kernel clamps)
-      - difference: A.coords             (result is contained in A's band)
+    """Coord list for the result.
+
+    All three ops use A.coords ∪ B.coords as the base topology. Even
+    `difference` needs B's coords: cells in A's deep interior that lie near
+    B's surface will have |max(phi_a, -phi_b)| < band (driven by B's value)
+    and must be in the result topology, even though they're outside A's
+    own band.
     """
     a_coords = a.coords.numpy()
-    if op == 2:  # difference: only A's topology needed
-        coords = a_coords
-    else:        # union, intersect: both
-        coords = np.concatenate([a_coords, b.coords.numpy()], axis=0)
+    b_coords = b.coords.numpy()
+    coords = np.concatenate([a_coords, b_coords], axis=0)
     if margin > 0:
         coords = _dilate_coords_chebyshev(coords, margin)
     else:
@@ -141,13 +174,66 @@ def _check_compatible(a: SparseSDF, b: SparseSDF) -> None:
         raise ValueError(f"SDF device mismatch: {a.device} vs {b.device}")
 
 
+def _combine_bg_sign(a: SparseSDF, b: SparseSDF, op: int) -> tuple[np.ndarray, tuple[int, int, int]]:
+    """Compute the result's background-sign field by combining inputs' signs.
+
+    Aligns both inputs onto a common origin (the elementwise-min of their
+    origins) and a common shape (covering both). Cells outside an input's
+    coverage are treated as +1 (exterior).
+    """
+    sa = a.bg_sign.numpy() if a.bg_sign is not None else None
+    sb = b.bg_sign.numpy() if b.bg_sign is not None else None
+    if sa is None and sb is None:
+        return None, (0, 0, 0)
+    leaf = a.bg_leaf_size
+
+    # axis-aligned bounding box of both sign fields, in leaf-coord space
+    a_lo = np.array(a.bg_origin, dtype=np.int64) // leaf if sa is not None else np.array([0, 0, 0], dtype=np.int64)
+    b_lo = np.array(b.bg_origin, dtype=np.int64) // leaf if sb is not None else np.array([0, 0, 0], dtype=np.int64)
+    a_hi = a_lo + np.array(sa.shape, dtype=np.int64) if sa is not None else a_lo
+    b_hi = b_lo + np.array(sb.shape, dtype=np.int64) if sb is not None else b_lo
+    lo = np.minimum(a_lo, b_lo)
+    hi = np.maximum(a_hi, b_hi)
+    shape = tuple(int(v) for v in (hi - lo))
+    if any(s <= 0 for s in shape):
+        return None, (0, 0, 0)
+
+    # Default to "outside" (+1) in unioned coverage
+    SA = np.full(shape, 1, dtype=np.int8)
+    SB = np.full(shape, 1, dtype=np.int8)
+    if sa is not None:
+        off = a_lo - lo
+        SA[off[0]:off[0] + sa.shape[0], off[1]:off[1] + sa.shape[1], off[2]:off[2] + sa.shape[2]] = sa
+    if sb is not None:
+        off = b_lo - lo
+        SB[off[0]:off[0] + sb.shape[0], off[1]:off[1] + sb.shape[1], off[2]:off[2] + sb.shape[2]] = sb
+
+    if op == 0:  # union: inside if either inside; outside if both outside
+        result = np.where(
+            (SA == -1) | (SB == -1), -1,
+            np.where((SA == 1) & (SB == 1), 1, 0),
+        ).astype(np.int8)
+    elif op == 1:  # intersection: inside only if both inside
+        result = np.where(
+            (SA == -1) & (SB == -1), -1,
+            np.where((SA == 1) | (SB == 1), 1, 0),
+        ).astype(np.int8)
+    else:  # difference (A - B): inside iff A inside AND B outside
+        result = np.where(
+            (SA == -1) & (SB == 1), -1,
+            np.where((SA == 1) | (SB == -1), 1, 0),
+        ).astype(np.int8)
+
+    origin = tuple(int(v) for v in (lo * leaf))
+    return result, origin
+
+
 def _apply_boolean(a: SparseSDF, b: SparseSDF, op: int,
                    margin: int, auto_reinit: int) -> SparseSDF:
     _check_compatible(a, b)
     band = max(a.band_width, b.band_width)
 
     coords_r = _result_topology(a, b, op, margin)
-    # Allocate the result volume; fill values via the combine kernel.
     coords_r_wp = wp.array(coords_r, dtype=wp.vec3i, device=a.device)
     volume_r = wp.Volume.allocate_by_voxels(
         voxel_points=coords_r_wp, voxel_size=a.dx, device=a.device,
@@ -156,18 +242,37 @@ def _apply_boolean(a: SparseSDF, b: SparseSDF, op: int,
     n_active = int(coords_canonical.shape[0])
     values_r = wp.empty(n_active, dtype=float, device=a.device)
 
+    # Background-sign args (defaults if either input lacks one)
+    bg_a = a.bg_sign if a.bg_sign is not None else wp.zeros((1, 1, 1), dtype=wp.int32, device=a.device)
+    bg_b = b.bg_sign if b.bg_sign is not None else wp.zeros((1, 1, 1), dtype=wp.int32, device=a.device)
+    leaf = a.bg_leaf_size
+
     wp.launch(
         _boolean_combine_kernel,
         dim=n_active,
         inputs=[
-            a.volume.id, b.volume.id, coords_canonical,
+            a.volume.id, b.volume.id,
+            bg_a,
+            a.bg_origin[0], a.bg_origin[1], a.bg_origin[2],
+            bg_a.shape[0], bg_a.shape[1], bg_a.shape[2],
+            bg_b,
+            b.bg_origin[0], b.bg_origin[1], b.bg_origin[2],
+            bg_b.shape[0], bg_b.shape[1], bg_b.shape[2],
+            leaf,
+            coords_canonical,
             a.values, b.values, values_r,
             op, band,
         ],
         device=a.device,
     )
     wp.synchronize()
-    result = SparseSDF(volume_r, coords_canonical, values_r, a.dx, band, a.device)
+
+    # Combine background signs for the result
+    bg_r_np, origin_r = _combine_bg_sign(a, b, op)
+    bg_r = wp.array(bg_r_np.astype(np.int32), dtype=wp.int32, device=a.device) if bg_r_np is not None else None
+
+    result = SparseSDF(volume_r, coords_canonical, values_r, a.dx, band, a.device,
+                       bg_sign=bg_r, bg_origin=origin_r, bg_leaf_size=leaf)
     if auto_reinit > 0:
         result = result.reinit(num_steps=auto_reinit)
     return result
@@ -185,7 +290,8 @@ def intersection(a: SparseSDF, b: SparseSDF, margin: int = 1,
     return _apply_boolean(a, b, op=1, margin=margin, auto_reinit=auto_reinit)
 
 
-def difference(a: SparseSDF, b: SparseSDF, margin: int = 0,
+def difference(a: SparseSDF, b: SparseSDF, margin: int = 1,
                auto_reinit: int = 3) -> SparseSDF:
-    """A − B. Default margin=0: difference is contained in A's topology."""
+    """A − B. Result topology is A.coords ∪ B.coords (B's contribution is
+    needed where A's deep interior meets B's surface)."""
     return _apply_boolean(a, b, op=2, margin=margin, auto_reinit=auto_reinit)

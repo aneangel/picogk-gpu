@@ -112,6 +112,41 @@ def test_union_reinit_preserves_zero_contour(warp_device):
     assert np.all(got[clearly_outside] > 0)
 
 
+def test_thick_interior_difference(warp_device):
+    """A thick cube minus a small sphere — the cube interior is far deeper
+    than the band, so the boolean kernel needs Phase 1.4's bg_sign field to
+    classify cells outside the band as "inside cube" vs "outside cube".
+
+    Without sign propagation, cells deep inside the cube interior (outside
+    the narrow band) get treated as `+band` (outside solid), which makes
+    `difference` return the wrong sign at the sphere/cube interface.
+    """
+    n, dx = 64, 1.0 / 32.0
+    band = 4 * dx  # ~0.125, much smaller than cube half-extent (0.30)
+
+    coords = (np.arange(n) - (n - 1) / 2.0) * dx
+    x, y, z = np.meshgrid(coords, coords, coords, indexing="ij")
+    # cube of half-extent 0.30: interior cells have phi down to -0.30
+    phi_cube = np.maximum(np.maximum(np.abs(x), np.abs(y)), np.abs(z)).astype(np.float32) - 0.30
+    # small sphere off-center, fully contained in cube and band
+    phi_sph = (np.sqrt((x - 0.10) ** 2 + y ** 2 + z ** 2) - 0.07).astype(np.float32)
+
+    ref_diff = np.maximum(phi_cube, -phi_sph)
+
+    a = SparseSDF.from_dense(phi_cube, dx=dx, band_width=band, device=warp_device)
+    b = SparseSDF.from_dense(phi_sph, dx=dx, band_width=band, device=warp_device)
+    assert a.bg_sign is not None, "Phase 1.4 should populate bg_sign on from_dense"
+
+    got = difference(a, b, margin=1, auto_reinit=0).to_dense((n, n, n))
+
+    # Compare at cells that are well-inside the result's band (i.e., near the
+    # cube boundary and near the sphere boundary). These are the cells where
+    # the sign-propagation fix matters most.
+    mask = np.abs(ref_diff) < (band - 2 * dx)
+    assert mask.sum() > 100
+    np.testing.assert_allclose(got[mask], ref_diff[mask], atol=2 * dx, rtol=2 * dx)
+
+
 def test_topology_growth_via_margin(warp_device):
     """The result topology should grow by approximately `margin` voxels in each
     direction beyond the union of inputs."""
