@@ -20,6 +20,7 @@ import warp as wp
 
 sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 from picogkgpu.reinit import Reinit, reinit_numpy, reinit_warp  # noqa: E402
+from picogkgpu.sparse_reinit import SparseReinit  # noqa: E402
 
 
 def _sphere_sdf(n: int, dx: float, radius: float) -> np.ndarray:
@@ -81,6 +82,49 @@ def bench(sizes_numpy: list[int], sizes_warp: list[int], steps: int = 5, repeats
     return out
 
 
+def bench_sparse(sizes: list[int], band_voxels: int = 5,
+                 steps: int = 5, repeats: int = 3) -> list[dict]:
+    """Sparse (NanoVDB) vs dense reinit on the same narrow-band sphere.
+
+    Reports throughput as MCU/s where the cell count for sparse is the
+    *active* voxel count, vs dense which always processes the full grid.
+    """
+    wp.init()
+    device = "cuda" if wp.get_device().is_cuda else "cpu"
+    results = []
+
+    print()
+    print(f"{'impl':<12}{'n':>6}{'band':>6}{'active':>10}{'frac':>7}{'wall(s)':>10}{'MCU/s':>10}")
+    print("-" * 64)
+
+    for n in sizes:
+        dx = 1.0 / (n - 1)
+        phi0 = _sphere_sdf(n, dx, radius=0.4)
+        band = band_voxels * dx
+
+        # dense baseline (processes every cell)
+        dense_op = Reinit((n, n, n), dx=dx, device=device)
+        dense_op.run(phi0, num_steps=steps)
+        t_dense = _time(lambda: dense_op.run(phi0, num_steps=steps), repeats=repeats)
+        dense_mcus = (n ** 3 * steps) / t_dense / 1e6
+        results.append({"impl": f"dense:{device}", "n": n, "wall_s": t_dense,
+                        "mcus": dense_mcus, "cells": n ** 3, "band_voxels": band_voxels})
+        print(f"{'dense':<12}{n:>6}{band_voxels:>6}{n**3:>10,}{1.0:>7.2%}{t_dense:>10.3f}{dense_mcus:>10.1f}")
+
+        # sparse: only active band cells are processed
+        sparse_op = SparseReinit(phi0, dx=dx, band_width=band, device=device)
+        sparse_op.run(num_steps=steps)
+        t_sparse = _time(lambda: sparse_op.run(num_steps=steps), repeats=repeats)
+        sparse_mcus = (sparse_op.n_active * steps) / t_sparse / 1e6
+        frac = sparse_op.n_active / (n ** 3)
+        results.append({"impl": f"sparse:{device}", "n": n, "wall_s": t_sparse,
+                        "mcus": sparse_mcus, "cells": sparse_op.n_active,
+                        "active_fraction": frac, "band_voxels": band_voxels})
+        print(f"{'sparse':<12}{n:>6}{band_voxels:>6}{sparse_op.n_active:>10,}{frac:>7.2%}{t_sparse:>10.3f}{sparse_mcus:>10.1f}")
+
+    return results
+
+
 def main():
     # numpy ref is O(n^3) per step with constant overhead; keep grids small.
     # warp scales up; 512^3 ~= 134M cells, comfortably under 32GB VRAM.
@@ -90,6 +134,7 @@ def main():
         steps=5,
         repeats=3,
     )
+    result["results"].extend(bench_sparse(sizes=[128, 256, 512], band_voxels=5, steps=5, repeats=3))
 
     out_dir = Path(__file__).resolve().parents[1] / "results"
     out_dir.mkdir(parents=True, exist_ok=True)

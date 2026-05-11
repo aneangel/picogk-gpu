@@ -1,0 +1,135 @@
+{
+  "device": "cuda",
+  "steps": 5,
+  "repeats": 3,
+  "results": [
+    {
+      "impl": "numpy",
+      "n": 32,
+      "wall_s": 0.00834888601093553,
+      "mcus": 19.624174983991786,
+      "cells": 32768
+    },
+    {
+      "impl": "numpy",
+      "n": 48,
+      "wall_s": 0.025691435002954677,
+      "mcus": 21.523126284553825,
+      "cells": 110592
+    },
+    {
+      "impl": "numpy",
+      "n": 64,
+      "wall_s": 0.07732063499861397,
+      "mcus": 16.95174903857807,
+      "cells": 262144
+    },
+    {
+      "impl": "warp-oneshot:cuda",
+      "n": 64,
+      "wall_s": 0.0005111380014568567,
+      "mcus": 2564.317261217435,
+      "cells": 262144
+    },
+    {
+      "impl": "warp-graph:cuda",
+      "n": 64,
+      "wall_s": 0.00034951399720739573,
+      "mcus": 3750.1216273814657,
+      "cells": 262144
+    },
+    {
+      "impl": "warp-oneshot:cuda",
+      "n": 128,
+      "wall_s": 0.0024694040039321408,
+      "mcus": 4246.271563220544,
+      "cells": 2097152
+    },
+    {
+      "impl": "warp-graph:cuda",
+      "n": 128,
+      "wall_s": 0.002120831995853223,
+      "mcus": 4944.172862585241,
+      "cells": 2097152
+    },
+    {
+      "impl": "warp-oneshot:cuda",
+      "n": 256,
+      "wall_s": 0.04419281298760325,
+      "mcus": 1898.1837617698452,
+      "cells": 16777216
+    },
+    {
+      "impl": "warp-graph:cuda",
+      "n": 256,
+      "wall_s": 0.04205384700617287,
+      "mcus": 1994.7302321161435,
+      "cells": 16777216
+    },
+    {
+      "impl": "warp-oneshot:cuda",
+      "n": 512,
+      "wall_s": 0.36920552399533335,
+      "mcus": 1817.6560110419214,
+      "cells": 134217728
+    },
+    {
+      "impl": "warp-graph:cuda",
+      "n": 512,
+      "wall_s": 0.36262227898987476,
+      "mcus": 1850.6547415382008,
+      "cells": 134217728
+    },
+    {
+      "impl": "dense:cuda",
+      "n": 128,
+      "wall_s": 0.0021265219984343275,
+      "mcus": 4930.943581924025,
+      "cells": 2097152,
+      "band_voxels": 5
+    },
+    {
+      "impl": "sparse:cuda",
+      "n": 128,
+      "wall_s": 0.003643143005319871,
+      "mcus": 2878.218061901015,
+      "cells": 2097152,
+      "active_fraction": 1.0,
+      "band_voxels": 5
+    },
+    {
+      "impl": "dense:cuda",
+      "n": 256,
+      "wall_s": 0.041761436994420364,
+      "mcus": 2008.6971626768445,
+      "cells": 16777216,
+      "band_voxels": 5
+    },
+    {
+      "impl": "sparse:cuda",
+      "n": 256,
+      "wall_s": 0.12487631700059865,
+      "mcus": 671.753315719568,
+      "cells": 16777216,
+      "active_fraction": 1.0,
+      "band_voxels": 5
+    },
+    {
+      "impl": "dense:cuda",
+      "n": 512,
+      "wall_s": 0.3577647089987295,
+      "mcus": 1875.782107961865,
+      "cells": 134217728,
+      "band_voxels": 5
+    },
+    {
+      "impl": "sparse:cuda",
+      "n": 512,
+      "wall_s": 1.0214305960107595,
+      "mcus": 657.0085550804579,
+      "cells": 134217728,
+      "active_fraction": 1.0,
+      "band_voxels": 5
+    }
+  ]
+}
