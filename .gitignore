@@ -19,6 +19,9 @@ __pycache__/
 *.pyc
 .venv/
 .uv/
+*.egg-info/
+.pytest_cache/
+uv.lock
 
 # misc benchmark output (CSVs are tooling-generated; JSONs are the scoreboard and ARE committed)
 benchmarks/results/*.csv
