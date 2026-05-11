@@ -23,6 +23,12 @@ __pycache__/
 # misc benchmark output (CSVs are tooling-generated; JSONs are the scoreboard and ARE committed)
 benchmarks/results/*.csv
 
+# perf / dotnet-trace captures — large binary artifacts, regeneratable
+benchmarks/profiles/*.perf.data
+benchmarks/profiles/*.nettrace
+benchmarks/profiles/*.svg
+benchmarks/profiles/*.html
+
 # editor / OS
 .vscode/
 .idea/
